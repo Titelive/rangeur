@@ -35,6 +35,8 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Rangeur.icns"
 rm -rf "$ICONSET"
 
 echo "▸ Signature locale…"
+# iCloud Drive ajoute des attributs que codesign refuse : on les retire d'abord.
+xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"
 
 echo ""

@@ -15,7 +15,24 @@ Une app Mac pour trier ses Téléchargements comme sur Tinder : une carte par fi
 | ✨ sur la carte | I | Demander un nom plus clair |
 | Bouton « Utiliser » | N | Accepter le nom proposé |
 
-Les fichiers sont rangés dans des sous-dossiers du dossier trié (`Téléchargements/Images`, `Téléchargements/Documents`…).
+Les fichiers sont rangés dans les vrais dossiers du Mac :
+
+| Catégorie | Touche | Dossier |
+|---|---|---|
+| Images | 1 | `~/Pictures` (Images) |
+| Documents | 2 | `~/Documents` |
+| Vidéos | 3 | `~/Movies` (Films) |
+| Musique | 4 | `~/Music` |
+| Archives | 5 | `Téléchargements/Archives` |
+| Installeurs | 6 | `Téléchargements/Installeurs` |
+| Code | 7 | `~/Documents/Code` |
+| Jeux | 8 | `~/Games` |
+
+Chaque dossier se change dans « Catégories » (bouton « Choisir… »). Un nom simple (« Archives ») crée un sous-dossier dans le dossier trié. Si un fichier du même nom existe déjà, Rangeur ajoute « (2) ». « Annuler » (U ou ⌘Z) remet le fichier exactement où il était, et la corbeille est celle du Mac.
+
+**Jeux.** Les ROM et jeux (NSP, XCI, NSZ, 3DS, NDS, GBA, WBFS, RVZ, CSO, CHD…) sont proposés dans Jeux. Une archive ou une image disque dont le nom parle de jeu (« Zelda Switch NSP.rar », « … PS2.iso », « … FitGirl Repack.zip ») aussi, plutôt que dans Archives. Les mots-clés se modifient dans « Catégories ».
+
+À la mise à jour, les catégories de base qui rangeaient dans `Téléchargements/Images`… passent aux vrais dossiers (sauf si tu avais changé leur dossier), et Jeux est ajoutée. Les fichiers déjà rangés restent où ils sont.
 
 **Trier n'importe quel dossier.** Par défaut Rangeur trie Téléchargements, mais tu peux choisir un autre dossier :
 - avec le menu à côté du titre, en haut de l'écran « À trier » (Téléchargements, Bureau, Documents, dossiers récents) ;

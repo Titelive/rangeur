@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// Édition des catégories : nom, dossier de destination et extensions.
 struct RulesView: View {
@@ -7,12 +8,12 @@ struct RulesView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Chaque fichier est proposé dans la première catégorie qui contient son extension. Les dossiers sont créés dans « \(state.watchedFolderDisplay) ».")
+                Text("Chaque fichier est proposé dans la première catégorie qui contient son extension. Les fichiers sont rangés dans de vrais dossiers du Mac (~/Pictures, ~/Documents…) ; un nom simple comme « Archives » crée un sous-dossier dans « \(state.watchedFolderDisplay) ». Une archive ou une image disque dont le nom contient un mot-clé (ex. « Switch NSP ») est proposée dans la catégorie de ce mot-clé.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
                 ForEach($state.categories) { $category in
-                    RuleRow(category: $category) {
+                    RuleRow(category: $category, destination: state.folderDisplay(for: category.folder)) {
                         state.removeCategory(category.id)
                     }
                 }
@@ -54,14 +55,32 @@ struct RulesView: View {
 
 struct RuleRow: View {
     @Binding var category: SortCategory
+    let destination: String
     let onDelete: () -> Void
 
     @State private var extensionsText: String
+    @State private var keywordsText: String
 
-    init(category: Binding<SortCategory>, onDelete: @escaping () -> Void) {
+    init(category: Binding<SortCategory>, destination: String, onDelete: @escaping () -> Void) {
         _category = category
+        self.destination = destination
         self.onDelete = onDelete
         _extensionsText = State(initialValue: category.wrappedValue.extensions.joined(separator: ", "))
+        _keywordsText = State(initialValue: (category.wrappedValue.keywords ?? []).joined(separator: ", "))
+    }
+
+    /// Choisir le dossier de destination dans le Finder.
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Ranger ici"
+        panel.message = "Où ranger les fichiers « \(category.name) » ?"
+        if panel.runModal() == .OK, let url = panel.url {
+            category.folder = (url.standardizedFileURL.path as NSString).abbreviatingWithTildeInPath
+        }
     }
 
     var body: some View {
@@ -81,8 +100,11 @@ struct RuleRow: View {
                     Spacer()
                     Image(systemName: "folder")
                         .foregroundStyle(.secondary)
-                    TextField("Dossier", text: $category.folder)
-                        .frame(width: 150)
+                    TextField("~/Pictures ou Archives", text: $category.folder)
+                        .frame(width: 190)
+                        .help("Rangé dans : \(destination)")
+                    Button("Choisir…", action: chooseFolder)
+                        .help("Choisir le dossier dans le Finder")
                     Button(role: .destructive, action: onDelete) {
                         Image(systemName: "trash")
                     }
@@ -95,6 +117,17 @@ struct RuleRow: View {
                     .onChange(of: extensionsText) { newValue in
                         category.extensions = SortCategory.parseExtensions(newValue)
                     }
+                TextField("Mots-clés dans le nom (archives, images disque), ex. : switch, nsp, ps2", text: $keywordsText)
+                    .font(.system(.body, design: .monospaced))
+                    .onChange(of: keywordsText) { newValue in
+                        category.keywords = newValue
+                            .split(separator: ",")
+                            .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+                            .filter { !$0.isEmpty }
+                    }
+                Text("Rangé dans \(destination)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .padding(6)
         }
