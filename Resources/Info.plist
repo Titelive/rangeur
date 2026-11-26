@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Rangeur</string>
+	<key>CFBundleDisplayName</key>
+	<string>Rangeur</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.rangeur.app</string>
+	<key>CFBundleExecutable</key>
+	<string>Rangeur</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleIconFile</key>
+	<string>Rangeur</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>fr</string>
+	<key>CFBundleAllowMixedLocalizations</key>
+	<true/>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.utilities</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Rangeur a besoin d'accéder à ton dossier Téléchargements pour y trier tes fichiers.</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Rangeur a besoin d'accès si tu choisis de trier un dossier du Bureau.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Rangeur a besoin d'accès si tu choisis de trier un dossier de Documents.</string>
+</dict>
+</plist>
