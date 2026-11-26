@@ -130,6 +130,7 @@ final class AppState: ObservableObject {
 
     private enum Keys {
         static let categories = "categories"
+        static let categoriesVersion = "categoriesVersion"
         static let history = "history"
         static let folder = "watchedFolder"
         static let auto = "autoMode"
@@ -198,8 +199,14 @@ final class AppState: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        _categories = Published(initialValue: Self.load([SortCategory].self, Keys.categories)
-                                ?? SortCategory.makeDefaults())
+        var loadedCategories = Self.load([SortCategory].self, Keys.categories) ?? SortCategory.makeDefaults()
+        if d.integer(forKey: Keys.categoriesVersion) < 2 {
+            // Vrais dossiers du Mac + catégorie Jeux (version 2).
+            loadedCategories = SortCategory.migrated(loadedCategories)
+            d.set(2, forKey: Keys.categoriesVersion)
+            if let data = try? JSONEncoder().encode(loadedCategories) { d.set(data, forKey: Keys.categories) }
+        }
+        _categories = Published(initialValue: loadedCategories)
         let loadedHistory = Self.load([MoveRecord].self, Keys.history) ?? []
         _history = Published(initialValue: loadedHistory)
         _stats = Published(initialValue: Self.loadStats() ?? Self.seedStats(from: loadedHistory))
@@ -265,12 +272,40 @@ final class AppState: ObservableObject {
         let age: TimeInterval
     }
 
-    /// Noms des dossiers créés par Rangeur (catégories), jamais proposés au tri.
+    /// Noms des dossiers de rangement situés dans le dossier trié (Archives, Installeurs…), jamais proposés au tri.
     private var reservedFolderNames: Set<String> {
-        var names = Set(categories.compactMap { $0.folder.split(separator: "/").first.map { String($0).lowercased() } })
-        names.insert(unknownFolderName.lowercased())
-        names.insert(Self.foldersFolderName.lowercased())
+        let root = watchedFolderURL.standardizedFileURL.path
+        var names = Set<String>()
+        for folder in categories.map(\.folder) + [unknownFolderName, Self.foldersFolderName] {
+            guard let path = folderURL(for: folder)?.path, path.hasPrefix(root + "/") else { continue }
+            if let first = path.dropFirst(root.count + 1).split(separator: "/").first {
+                names.insert(String(first).lowercased())
+            }
+        }
         return names
+    }
+
+    /// Dossier réel d'une catégorie : « ~/Pictures » ou « /Volumes/… » tel quel,
+    /// un nom simple (« Archives ») dans le dossier trié.
+    func folderURL(for folder: String) -> URL? {
+        let f = folder.trimmingCharacters(in: .whitespaces)
+        guard !f.isEmpty else { return nil }
+        if f.hasPrefix("~") || f.hasPrefix("/") {
+            return URL(fileURLWithPath: (f as NSString).expandingTildeInPath, isDirectory: true).standardizedFileURL
+        }
+        return watchedFolderURL.appendingPathComponent(f, isDirectory: true).standardizedFileURL
+    }
+
+    /// Chemin lisible du dossier d'une catégorie (« ~/Pictures », « ~/Downloads/Archives »).
+    func folderDisplay(for folder: String) -> String {
+        guard let url = folderURL(for: folder) else { return "—" }
+        return (url.path as NSString).abbreviatingWithTildeInPath
+    }
+
+    /// Le fichier est-il déjà directement dans ce dossier ?
+    private func isDirectly(_ url: URL, in folder: String) -> Bool {
+        guard let dir = folderURL(for: folder) else { return false }
+        return url.deletingLastPathComponent().standardizedFileURL.path == dir.path
     }
 
     static func isFolder(_ url: URL) -> Bool {
@@ -338,8 +373,18 @@ final class AppState: ObservableObject {
     }
 
     func suggestion(for url: URL) -> SortCategory? {
-        if Self.isFolder(url) { return folderSuggestion(for: url) }
-        return categories.first { $0.matches(url.pathExtension) }
+        let baseName = url.deletingPathExtension().lastPathComponent
+        if Self.isFolder(url) {
+            // Un dossier « Zelda Switch NSP » → Jeux, sinon la catégorie de la majorité de ses fichiers.
+            return categories.first { $0.matchesName(url.lastPathComponent) } ?? folderSuggestion(for: url)
+        }
+        let ext = url.pathExtension.lowercased()
+        // Une archive ou une image disque dont le nom parle de jeu (« … Switch NSP.rar ») → Jeux.
+        if SortCategory.containerExtensions.contains(ext),
+           let byName = categories.first(where: { $0.matchesName(baseName) }) {
+            return byName
+        }
+        return categories.first { $0.matches(ext) }
     }
 
     /// Catégorie où ira l'élément avec un swipe à droite.
@@ -381,6 +426,11 @@ final class AppState: ObservableObject {
 
     /// Swipe à droite (ou choix d'une catégorie) : range le fichier.
     func sort(_ url: URL, into category: SortCategory) {
+        // Déjà dans le bon dossier (ex. on trie ~/Documents et on choisit Documents) : il reste là.
+        if isDirectly(url, in: category.folder) {
+            keep(url)
+            return
+        }
         var newName: String?
         if renameAutoApply, !isExcepted(url, from: .noRename),
            case .suggested(let name, _) = renameStates[url] { newName = name }
@@ -516,7 +566,10 @@ final class AppState: ObservableObject {
         let folder = folderName.trimmingCharacters(in: .whitespaces)
         guard !folder.isEmpty else { return nil }
         let fm = FileManager.default
-        let destinationDir = watchedFolderURL.appendingPathComponent(folder, isDirectory: true)
+        guard let destinationDir = folderURL(for: folder) else { return nil }
+        if url.deletingLastPathComponent().standardizedFileURL.path == destinationDir.path && newName == nil {
+            return nil   // déjà à sa place
+        }
         do {
             try fm.createDirectory(at: destinationDir, withIntermediateDirectories: true)
             let destination = Self.uniqueURL(for: newName ?? url.lastPathComponent, in: destinationDir)
@@ -821,6 +874,25 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// Fichiers déjà rangés dans le dossier d'une catégorie.
+    /// Un sous-dossier du dossier trié (Archives…) appartient à Rangeur : tout son contenu compte.
+    /// Un vrai dossier du Mac (~/Documents, ~/Pictures…) contient aussi tes autres fichiers :
+    /// seuls ceux que Rangeur y a rangés comptent, pour qu'une règle ne touche jamais au reste.
+    private func sortedFiles(in folder: String) -> [URL] {
+        guard let dir = folderURL(for: folder) else { return [] }
+        let root = watchedFolderURL.standardizedFileURL.path
+        if dir.path.hasPrefix(root + "/") { return files(in: dir) }
+        var seen = Set<String>()
+        return history.compactMap { record -> URL? in
+            guard !record.undone, record.categoryName != Self.renamedLabel,
+                  record.movedURL.deletingLastPathComponent().standardizedFileURL.path == dir.path,
+                  FileManager.default.fileExists(atPath: record.movedURL.path),
+                  !Self.isFolder(record.movedURL),
+                  seen.insert(record.movedURL.path).inserted else { return nil }
+            return record.movedURL
+        }
+    }
+
     /// Les fichiers concernés par une règle, en ce moment.
     func ruleMatches(_ rule: AutoRule) -> [URL] {
         guard rule.days >= 0 else { return [] }
@@ -832,7 +904,7 @@ final class AppState: ObservableObject {
         case .category(let id):
             pool = files(in: root)
             if rule.action != .sort, let c = categories.first(where: { $0.id == id }) {
-                pool += files(in: root.appendingPathComponent(c.folder, isDirectory: true))
+                pool += sortedFiles(in: c.folder)
             }
         case .partial:
             let items = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil,
@@ -843,7 +915,7 @@ final class AppState: ObservableObject {
             if rule.action != .sort {
                 // les fichiers déjà rangés comptent aussi (sauf pour « ranger »)
                 for folder in Set(categories.map(\.folder) + [unknownFolderName]) {
-                    pool += files(in: root.appendingPathComponent(folder, isDirectory: true))
+                    pool += sortedFiles(in: folder)
                 }
             }
         }
@@ -858,11 +930,11 @@ final class AppState: ObservableObject {
                 if !ExceptionRule(pattern: p).matches(url.lastPathComponent) { return false }
             case .category(let id):
                 guard let c = categories.first(where: { $0.id == id }) else { return false }
-                let inFolder = url.deletingLastPathComponent().lastPathComponent == c.folder
+                let inFolder = isDirectly(url, in: c.folder)
                 if !(c.matches(url.pathExtension) && atRoot) && !inFolder { return false }
             }
             if rule.action == .sort && (!atRoot || suggestion(for: url) == nil) { return false }
-            if rule.action == .moveTo && url.deletingLastPathComponent().lastPathComponent == rule.folder { return false }
+            if rule.action == .moveTo && isDirectly(url, in: rule.folder) { return false }
             // Jamais un fichier modifié il y a moins d'une minute (téléchargement qui se termine, fichier en cours d'écriture).
             if let m = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
                Date().timeIntervalSince(m) < 60 { return false }

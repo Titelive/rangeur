@@ -78,10 +78,8 @@ struct FileCard: View {
                     .foregroundStyle(.secondary)
 
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.right")
-                        .font(.caption.weight(.bold))
                     Image(systemName: target.symbol)
-                    Text(target.name)
+                    Text("Proposé : \(target.name)")
                 }
                 .font(.callout.weight(.semibold))
                 .padding(.horizontal, 11)

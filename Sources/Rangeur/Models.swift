@@ -1,7 +1,9 @@
 import Foundation
 
 /// Une catégorie de rangement : les fichiers dont l'extension figure dans `extensions`
-/// sont déplacés dans le sous-dossier `folder` du dossier surveillé.
+/// sont déplacés dans le dossier `folder`.
+/// `folder` est soit un vrai dossier du Mac (« ~/Pictures », « /Volumes/Disque/Jeux »),
+/// soit un nom simple (« Archives ») : un sous-dossier du dossier trié.
 struct SortCategory: Identifiable, Codable, Hashable {
     var id: UUID
     var name: String
@@ -9,24 +11,48 @@ struct SortCategory: Identifiable, Codable, Hashable {
     var symbol: String
     var extensions: [String]
     var isEnabled: Bool
+    /// Mots dans le nom qui font proposer cette catégorie pour une archive ou une image disque
+    /// (« Zelda Switch NSP.rar » → Jeux). Optionnel : les anciennes catégories n'en ont pas.
+    var keywords: [String]?
 
     init(id: UUID = UUID(),
          name: String,
          folder: String? = nil,
          symbol: String,
          extensions: [String],
+         keywords: [String]? = nil,
          isEnabled: Bool = true) {
         self.id = id
         self.name = name
         self.folder = folder ?? name
         self.symbol = symbol
         self.extensions = extensions
+        self.keywords = keywords
         self.isEnabled = isEnabled
     }
 
     func matches(_ ext: String) -> Bool {
         isEnabled && !ext.isEmpty && extensions.contains(ext.lowercased())
     }
+
+    /// Le nom (sans extension) contient-il un des mots-clés ? Mots entiers, sans tenir compte des majuscules.
+    func matchesName(_ name: String) -> Bool {
+        guard isEnabled, let keywords, !keywords.isEmpty else { return false }
+        let lower = name.lowercased()
+        return keywords.contains { keyword in
+            let words = keyword.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            guard !words.isEmpty else { return false }
+            let core = words.map { NSRegularExpression.escapedPattern(for: String($0)) }.joined(separator: "[^\\p{L}\\p{N}]+")
+            let pattern = "(^|[^\\p{L}\\p{N}])" + core + "($|[^\\p{L}\\p{N}])"
+            return lower.range(of: pattern, options: .regularExpression) != nil
+        }
+    }
+
+    /// Extensions « conteneurs » : une archive ou une image disque peut contenir n'importe quoi,
+    /// alors on regarde aussi son nom (mots-clés) avant de la proposer dans Archives ou Installeurs.
+    static let containerExtensions: Set<String> = [
+        "zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz", "iso", "dmg", "img", "bin", "cue", "pkg", "",
+    ]
 
     /// Transforme « .JPG, png ; heic » en ["jpg", "png", "heic"].
     static func parseExtensions(_ text: String) -> [String] {
@@ -39,31 +65,68 @@ struct SortCategory: Identifiable, Codable, Hashable {
     }
 
     /// Catégories proposées au premier lancement (identifiants neufs à chaque appel).
+    /// Les fichiers vont dans les vrais dossiers du Mac ; Archives et Installeurs restent dans le dossier trié.
     static func makeDefaults() -> [SortCategory] {
         [
-            SortCategory(name: "Images", symbol: "photo",
+            SortCategory(name: "Images", folder: "~/Pictures", symbol: "photo",
                          extensions: ["jpg", "jpeg", "png", "gif", "heic", "heif", "webp", "avif",
                                       "tif", "tiff", "bmp", "svg", "ico", "psd", "raw", "dng",
                                       "cr2", "cr3", "nef", "arw"]),
-            SortCategory(name: "Documents", symbol: "doc.text",
+            SortCategory(name: "Documents", folder: "~/Documents", symbol: "doc.text",
                          extensions: ["pdf", "doc", "docx", "odt", "rtf", "txt", "md", "pages",
                                       "xls", "xlsx", "ods", "csv", "numbers",
                                       "ppt", "pptx", "odp", "key", "epub"]),
-            SortCategory(name: "Vidéos", symbol: "film",
+            SortCategory(name: "Vidéos", folder: "~/Movies", symbol: "film",
                          extensions: ["mp4", "mov", "m4v", "mkv", "avi", "webm", "wmv", "flv",
                                       "mpg", "mpeg"]),
-            SortCategory(name: "Musique", symbol: "music.note",
+            SortCategory(name: "Musique", folder: "~/Music", symbol: "music.note",
                          extensions: ["mp3", "m4a", "aac", "wav", "flac", "ogg", "opus", "aif",
                                       "aiff"]),
             SortCategory(name: "Archives", symbol: "archivebox",
                          extensions: ["zip", "rar", "7z", "tar", "gz", "tgz", "bz2", "xz"]),
             SortCategory(name: "Installeurs", symbol: "shippingbox",
                          extensions: ["dmg", "pkg", "mpkg", "iso", "app"]),
-            SortCategory(name: "Code", symbol: "curlybraces",
+            SortCategory(name: "Code", folder: "~/Documents/Code", symbol: "curlybraces",
                          extensions: ["swift", "py", "js", "ts", "json", "html", "css", "xml",
                                       "yml", "yaml", "sh", "rb", "go", "java", "c", "cpp", "h",
                                       "ipynb"]),
+            makeGames(),
         ]
+    }
+
+    /// La catégorie Jeux : ROM et jeux Switch, PlayStation, Nintendo…, et les archives dont le nom parle de jeu.
+    static func makeGames() -> SortCategory {
+        SortCategory(name: "Jeux", folder: "~/Games", symbol: "gamecontroller",
+                     extensions: ["nsp", "nsz", "xci", "xcz", "nro", "nca", "3ds", "cia", "cci", "nds",
+                                  "gba", "gbc", "gb", "nes", "fds", "sfc", "smc", "n64", "z64", "v64",
+                                  "gcm", "gcz", "rvz", "wbfs", "wad", "wux", "wua", "cso", "pbp", "chd",
+                                  "vpk", "gen", "sms", "gg", "pce", "32x", "a26", "lnx", "ngp", "ws",
+                                  "wsc", "rom", "sav", "srm"],
+                     keywords: ["nsp", "xci", "nsz", "switch", "nintendo", "wii", "wiiu", "gamecube",
+                                "n64", "3ds", "nds", "gba", "gbc", "snes", "nes", "ps1", "psx", "ps2",
+                                "ps3", "ps4", "ps5", "psp", "vita", "psvita", "xbox", "xbox360",
+                                "dreamcast", "sega", "rom", "roms", "repack", "fitgirl", "dodi",
+                                "gog", "steam", "goty", "base game", "dlc"])
+    }
+
+    /// Anciens réglages : les catégories de base rangeaient dans des sous-dossiers du dossier trié
+    /// (Téléchargements/Images…). On les envoie dans les vrais dossiers, sauf si le dossier a été modifié,
+    /// et on ajoute la catégorie Jeux si elle manque.
+    static func migrated(_ stored: [SortCategory]) -> [SortCategory] {
+        let defaults = makeDefaults()
+        var result = stored.map { category -> SortCategory in
+            var c = category
+            if let d = defaults.first(where: { $0.name.lowercased() == c.name.lowercased() }) {
+                if c.folder.trimmingCharacters(in: .whitespaces).lowercased() == c.name.lowercased() {
+                    c.folder = d.folder
+                }
+                if c.keywords == nil { c.keywords = d.keywords }
+            }
+            return c
+        }
+        let hasGames = result.contains { $0.name.lowercased() == "jeux" || $0.symbol == "gamecontroller" }
+        if !hasGames { result.append(makeGames()) }
+        return result
     }
 }
 

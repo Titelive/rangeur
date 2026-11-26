@@ -86,13 +86,13 @@ struct TriageView: View {
                 HStack(spacing: 12) {
                     Text(state.queue.isEmpty
                          ? "Tout est rangé"
-                         : "\(state.queue.count) à trier")
+                         : "\(state.queue.count) fichier\(state.queue.count > 1 ? "s" : "") à trier dans")
                         .font(.system(size: 28, weight: .bold, design: .rounded))
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: state.queue.count)
                     FolderPicker()
                 }
-                Text("Glisse la carte, ou joue au clavier avec ← ↑ →")
+                Text("Glisse la carte, ou joue au clavier : ← garder · ↑ corbeille · → ranger")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -339,7 +339,7 @@ struct TriageView: View {
                 ActionPill(icon: suggested.symbol, title: "Ranger dans \(suggested.name)", key: "→",
                            color: tint(for: suggested), prominent: true,
                            pressed: pressedKey == .right) { commit(.right, url) }
-                    .help("Ranger dans « \(suggested.folder) »")
+                    .help("Ranger dans « \(state.folderDisplay(for: suggested.folder)) »")
             }
             .padding(LiquidGlass.isAvailable ? 0 : 6)
             .glassGroup(spacing: 10)
@@ -370,7 +370,8 @@ struct TriageView: View {
                         }
                         .buttonStyle(CategoryTileStyle(color: CategoryTileLabel.color(for: index),
                                                        isSuggested: category.id == suggested.id))
-                        .help(index < 9 ? "\(category.name) — touche \(index + 1)" : category.name)
+                        .help((index < 9 ? "\(category.name) — touche \(index + 1)" : category.name)
+                              + " · \(state.folderDisplay(for: category.folder))")
                     }
                 }
                 .frame(maxWidth: 960)
